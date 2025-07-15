@@ -8,13 +8,11 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-APP_URL = os.getenv("APP_URL")  
+APP_URL = os.getenv("APP_URL")
 PORT = int(os.getenv("PORT", "8443"))
 
-# In-memory task store
 user_tasks = {}
 
-# Telegram command: /addtask @username task...
 async def add_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
         await update.message.reply_text("Usage: /addtask @username Task description")
@@ -30,7 +28,6 @@ async def add_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_tasks.setdefault(username.lower(), []).append(task_text)
     await update.message.reply_text(f"✅ Task assigned to {username}.")
 
-# Telegram command: /mytask
 async def my_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     username = '@' + user.username if user.username else None
@@ -47,27 +44,28 @@ async def my_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     task_list = '\n'.join(tasks)
     await update.message.reply_text(f"📝 Your tasks:\n\n{task_list}")
 
-# Aiohttp webhook handler (no token check)
+# 🛠️ Webhook Handler with logging and error catching
 async def handle_webhook(request):
-    data = await request.json()
-    update = Update.de_json(data, app.bot)
-    await app.update_queue.put(update)
-    return web.Response(text="OK")
+    try:
+        data = await request.json()
+        print("✅ Received update:", data)  # Add logging
+        update = Update.de_json(data, app.bot)
+        await app.update_queue.put(update)
+        return web.Response(text="OK")
+    except Exception as e:
+        print("Error in webhook handler:", str(e))
+        return web.Response(status=500, text="Internal Server Error")
 
-# Main async startup
 async def main():
     global app
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Add Telegram command handlers
     app.add_handler(CommandHandler("addtask", add_task))
     app.add_handler(CommandHandler("mytask", my_task))
 
-    # Set Telegram webhook
     webhook_url = f"{APP_URL}/webhook/{BOT_TOKEN}"
     await app.bot.set_webhook(webhook_url)
 
-    # Start aiohttp server
     server = web.Application()
     server.router.add_post(f"/webhook/{BOT_TOKEN}", handle_webhook)
 
@@ -76,8 +74,8 @@ async def main():
     site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
 
-    print(f"🤖 Bot is running on port {PORT} via webhook.")
-    await asyncio.Future()  # keep running
+    print(f"🤖 Bot running on port {PORT} via webhook at {webhook_url}")
+    await asyncio.Future()
 
 if __name__ == "__main__":
     asyncio.run(main())
