@@ -1,18 +1,20 @@
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import os
+import asyncio
 from dotenv import load_dotenv
 from aiohttp import web
-import asyncio
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 load_dotenv()
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 APP_URL = os.getenv("APP_URL")  
-PORT = int(os.getenv("PORT", "8443"))  # Render sets this automatically
+PORT = int(os.getenv("PORT", "8443"))
 
-# Tasks store: {username: [task1, task2, ...]}
+# In-memory task store
 user_tasks = {}
 
+# Telegram command: /addtask @username task...
 async def add_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
         await update.message.reply_text("Usage: /addtask @username Task description")
@@ -26,8 +28,9 @@ async def add_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user_tasks.setdefault(username.lower(), []).append(task_text)
-    await update.message.reply_text(f"Task assigned to {username}.")
+    await update.message.reply_text(f"✅ Task assigned to {username}.")
 
+# Telegram command: /mytask
 async def my_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     username = '@' + user.username if user.username else None
@@ -44,27 +47,27 @@ async def my_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     task_list = '\n'.join(tasks)
     await update.message.reply_text(f"📝 Your tasks:\n\n{task_list}")
 
+# Aiohttp webhook handler (no token check)
 async def handle_webhook(request):
-    # Security check: token in URL must match
-    if request.match_info.get('token') != BOT_TOKEN:
-        return web.Response(status=403)
-
     data = await request.json()
     update = Update.de_json(data, app.bot)
     await app.update_queue.put(update)
     return web.Response(text="OK")
 
+# Main async startup
 async def main():
     global app
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
+    # Add Telegram command handlers
     app.add_handler(CommandHandler("addtask", add_task))
     app.add_handler(CommandHandler("mytask", my_task))
 
-    # Set webhook for Telegram to call
-    await app.bot.set_webhook(f"{APP_URL}/webhook/{BOT_TOKEN}")
+    # Set Telegram webhook
+    webhook_url = f"{APP_URL}/webhook/{BOT_TOKEN}"
+    await app.bot.set_webhook(webhook_url)
 
-    # Setup aiohttp server for webhook handling
+    # Start aiohttp server
     server = web.Application()
     server.router.add_post(f"/webhook/{BOT_TOKEN}", handle_webhook)
 
@@ -73,8 +76,8 @@ async def main():
     site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
 
-    print(f"🤖 Bot running with webhook on port {PORT}")
-    await asyncio.Future()  # Run forever
+    print(f"🤖 Bot is running on port {PORT} via webhook.")
+    await asyncio.Future()  # keep running
 
 if __name__ == "__main__":
     asyncio.run(main())
