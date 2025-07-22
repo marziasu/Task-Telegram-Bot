@@ -1,7 +1,8 @@
 from aiohttp import web
 from telegram import Update
 from config.settings import BOT_TOKEN
-from main import app  # use 'main.app' only if circular imports are handled safely
+from app_core import app
+
 
 async def handle_webhook(request):
     try:

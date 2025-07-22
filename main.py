@@ -5,12 +5,17 @@ from telegram.ext import ApplicationBuilder, CommandHandler
 from config.settings import BOT_TOKEN, APP_URL, PORT
 from bot.handlers import add_task, my_tasks, update_status, task_stats, list_all_tasks, help_command
 from bot.webhook import handle_webhook
+from app_core import app
+
+# Register routes
+app.include_router(handle_webhook)
 
 app = None  # Global variable to store the application
 
 # Health check endpoint
-async def health_check(request):
-    return web.Response(text="Bot is running!")
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
 
 async def main():
     global app
